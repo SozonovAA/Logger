@@ -2,7 +2,6 @@
 [Dd]ebug/
 [Rr]elease/
 build/*
-cmake*/
 *.slo
 *.lo
 *.o
