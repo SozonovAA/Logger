@@ -8,6 +8,7 @@
 #include <memory>
 
 #include "spdlog/logger.h"
+#include "spdlog/async.h"
 #include "spdlog/sinks/basic_file_sink.h"
 #include "spdlog/sinks/stdout_color_sinks.h"
 #include "spdlog/sinks/rotating_file_sink.h"
@@ -41,32 +42,40 @@ public:
                                                                            Logger::MAX_LOG_FILE_SIZE,
                                                                            Logger::MAX_LOG_FILE_NUMBER) ),
     exceptionFileSink( std::make_shared<spdlog::sinks::basic_file_sink_mt>("logs/ExceptionLog.log") ),
-    multiSinkLog( spdlog::logger("Logger", {consoleSink, rotateFileSink, exceptionFileSink}) )
+    sinks{consoleSink, rotateFileSink, exceptionFileSink}
     {
+        spdlog::init_thread_pool(8192, 1);
+        multiSinkLog = std::make_shared<spdlog::async_logger>(spdlog::async_logger("Logger", sinks.begin(), sinks.end(), spdlog::thread_pool(), spdlog::async_overflow_policy::block) );
+        spdlog::register_logger(multiSinkLog);
         consoleSink->set_level(spdlog::level::info); //4
     
         rotateFileSink->set_level(spdlog::level::info); //4
     
         exceptionFileSink->set_level(spdlog::level::critical); //7
     
-        multiSinkLog.set_level(spdlog::level::info); //5
-        multiSinkLog.set_pattern(Logger::format);
+        multiSinkLog->set_level(spdlog::level::info); //5
+        multiSinkLog->set_pattern(Logger::format);
+    
     }
     
     Logger( const std::string& _fileLogPath, std::uint16_t _fileLogFileSize, std::uint16_t _fileLogFileNumber ):
     consoleSink( std::make_shared<spdlog::sinks::stdout_color_sink_mt>() ),
     rotateFileSink( std::make_shared<spdlog::sinks::rotating_file_sink_mt>( _fileLogPath, _fileLogFileSize, _fileLogFileNumber) ),
     exceptionFileSink( std::make_shared<spdlog::sinks::basic_file_sink_mt>("logs/ExceptionLog.log") ),
-    multiSinkLog( spdlog::logger("Logger", {consoleSink, rotateFileSink, exceptionFileSink}) )
+    sinks{consoleSink, rotateFileSink, exceptionFileSink}
     {
+        spdlog::init_thread_pool(8192, 1);
+        multiSinkLog = std::make_shared<spdlog::async_logger>(spdlog::async_logger("Logger", sinks.begin(), sinks.end(), spdlog::thread_pool(), spdlog::async_overflow_policy::block) );
+        spdlog::register_logger(multiSinkLog);
+    
         consoleSink->set_level(spdlog::level::info); //4
     
         rotateFileSink->set_level(spdlog::level::info); //4
     
         exceptionFileSink->set_level(spdlog::level::critical); //7
     
-        multiSinkLog.set_level(spdlog::level::info); //5
-        multiSinkLog.set_pattern(Logger::format);
+        multiSinkLog->set_level(spdlog::level::info); //5
+        multiSinkLog->set_pattern(Logger::format);
     
     }
     
@@ -121,50 +130,50 @@ public:
     template<typename T>
     void info( const T &&msg )
     {
-        multiSinkLog.info( std::forward<decltype( msg) >( msg ) );
+        multiSinkLog->info( std::forward<decltype( msg) >( msg ) );
     }
 
     template<typename T>
     void info( T &&msg )
     {
-        multiSinkLog.info( std::forward<decltype( msg) >( msg ) );
+        multiSinkLog->info( std::forward<decltype( msg) >( msg ) );
     }
     
     template<typename T>
     void warn( const T &&msg )
     {
-        multiSinkLog.warn( std::forward<decltype( msg) >( msg ) );
+        multiSinkLog->warn( std::forward<decltype( msg) >( msg ) );
     }
 
     template<typename T>
     void warn( T &&msg )
     {
-        multiSinkLog.warn( std::forward<decltype( msg) >( msg ) );
+        multiSinkLog->warn( std::forward<decltype( msg) >( msg ) );
     }
     
     template<typename T>
     void error( const T &&msg )
     {
-        multiSinkLog.error( std::forward<decltype( msg) >( msg ) );
+        multiSinkLog->error( std::forward<decltype( msg) >( msg ) );
     }
 
     template<typename T>
     void error(  T &&msg )
     {
-        multiSinkLog.error( std::forward<decltype( msg) >( msg ) );
+        multiSinkLog->error( std::forward<decltype( msg) >( msg ) );
     }
 
     
     template<typename T>
     void critical( const T &&msg )
     {
-        multiSinkLog.critical( std::forward<decltype( msg) >( msg ) );
+        multiSinkLog->critical( std::forward<decltype( msg) >( msg ) );
     }
 
     template<typename T>
     void critical( T &&msg )
     {
-        multiSinkLog.critical(  std::forward<decltype( msg) >( msg ) );
+        multiSinkLog->critical(  std::forward<decltype( msg) >( msg ) );
     }
 
 private:
@@ -172,7 +181,9 @@ private:
     std::shared_ptr<spdlog::sinks::sink> rotateFileSink;
     std::shared_ptr<spdlog::sinks::sink> exceptionFileSink;
     
-    spdlog::logger multiSinkLog;
+    std::vector<spdlog::sink_ptr> sinks;
+    
+    std::shared_ptr< spdlog::async_logger> multiSinkLog;
     
     /**
      * Формат записываемых данных.
@@ -194,7 +205,7 @@ public:
      */
     void setFormat( std::string && _format ) {
         Logger::format = std::forward<decltype(_format)>( _format );
-        multiSinkLog.set_pattern(Logger::format);
+        multiSinkLog->set_pattern(Logger::format);
     }
 
     /**
@@ -207,11 +218,11 @@ public:
      */
     void setFormat( const std::string && _format ) {
         Logger::format = std::forward<decltype(_format)>( _format );
-        multiSinkLog.set_pattern(Logger::format);
+        multiSinkLog->set_pattern(Logger::format);
     }
     
-     const spdlog::logger &getMultiSinkLog() const {
-        return multiSinkLog;
+     [[nodiscard]] const spdlog::logger &getMultiSinkLog() const {
+        return *multiSinkLog;
     }
     
 };
@@ -231,11 +242,12 @@ public:
  */
 template<typename T>
 inline void infoLogToFile( T&& msg, const std::string& _filepath = "logs/InfoFileLog.log",
-                           const std::string& _logName = "infoLogToConsole" ) {
+                           const std::string& _logName = "infoLogToConsole", const std::string& _pattern = "[%D %H:%M:%S:%f][%n][%^%L%$] : %v " ) {
     std::shared_ptr< spdlog::logger > logger{ spdlog::get( _logName ) };
     if( !logger ) {
         logger = spdlog::basic_logger_mt( _logName, _filepath, true );
     }
+    logger->set_pattern(_pattern);
     logger->info( std::forward<decltype( msg )>( msg ) );
 }
 
@@ -254,11 +266,12 @@ inline void infoLogToFile( T&& msg, const std::string& _filepath = "logs/InfoFil
  */
     template<typename T>
     inline void infoLogToFile( const T&& msg, const std::string& _filepath = "logs/InfoFileLog.log",
-                               const std::string& _logName = "infoLogToConsole" ) {
+                               const std::string& _logName = "infoLogToConsole", const std::string& _pattern = "[%D %H:%M:%S:%f][%n][%^%L%$] : %v "  ) {
         std::shared_ptr< spdlog::logger > logger{ spdlog::get( _logName ) };
         if( !logger ) {
             logger = spdlog::basic_logger_mt( _logName, _filepath, true );
         }
+        logger->set_pattern(_pattern);
         logger->info( std::forward<decltype( msg )>( msg ) );
     }
 
@@ -320,12 +333,14 @@ inline void infoLogToConsole(  const T&& msg , const std::string& _logName = "in
 template<typename T>
 inline void infoLogToRotatingFile( const T&& msg, const std::string& _filepath = "logs/InfoRotatingLog.log",
                                    const std::string& _logName = "infoLogToRotatingFile",
+                                   const std::string& _pattern = "[%D %H:%M:%S:%f][%n][%^%L%$] : %v ",
                                    std::uint32_t max_size = 1048576 * 5,
                                    std::uint32_t max_files = 3) {
     std::shared_ptr< spdlog::logger > logger{ spdlog::get( _logName ) };
     if( !logger ) {
         logger = spdlog::rotating_logger_mt( _logName, _filepath, max_size, max_files );
     }
+    logger->set_pattern(_pattern);
     logger->info( std::forward<decltype(msg)>( msg ) );
 }
 
