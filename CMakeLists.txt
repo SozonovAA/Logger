@@ -11,7 +11,7 @@ if(NOT TARGET spdlog)
     find_package(spdlog CONFIG REQUIRED)
 endif()
 
-add_library(${PROJECT_NAME} include/Logger.h)
+add_library(${PROJECT_NAME} include/Logger.h include/AsyncLogger.h include/SerialLogger.h)
 target_link_libraries(${PROJECT_NAME} spdlog::spdlog)
 
 target_include_directories(${PROJECT_NAME}
